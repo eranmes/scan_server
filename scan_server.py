@@ -10,6 +10,8 @@ from optparse import OptionParser
 parser = OptionParser()
 parser.add_option("-s", "--scans_root", dest="scans_root",
     help = "Root directory containing the scans.")
+parser.add_option("-b", "--scanimage", dest="scanimage_binary",
+    help = "Path to the scanimage binary.", default="/usr/bin/scanimage")
 
 def get_jpegs_list(in_dir):
   return [t for t in os.listdir(in_dir) if t.endswith('.jpg')]
@@ -41,24 +43,26 @@ class ScanListHandler(tornado.web.RequestHandler):
     self.write('</html>')
 
 class DoScanHandler(tornado.web.RequestHandler):
-  def __init__(self):
-    self._alphanumeric_re = re.compile('[\w]+')
+  def initialize(self):
+    self._alphanumeric_re = re.compile('[\w]+\Z')
 
   def get(self):
     self.write('Your image goes here.')
 
   def post(self):
     scan_name = self.get_argument('scan_name')
-    if not self._alphanumeric_re.match(scan_image):
+    if not self._alphanumeric_re.match(scan_name):
       self.send_error()
       return
 
     self.set_header("Content-Type", "text/plain")
     self.write("Will scan to " + scan_name)
 
-  def write_error(status_code, **kwargs):
-    self.set_header("Content-Type", "text/plain")
-    self.write("Not an alphanumeric name.")
+  def write_error(self, status_code, **kwargs):
+    self.write('<html><body>')
+    self.write('<p>Not an alphanumeric name.</p>')
+    self.write('<a href="/show_scans">Go back.</a>')
+    self.write('</body></html>')
 
 def get_application(scans_root):
   application = tornado.web.Application([(r"/", MainHandler),
