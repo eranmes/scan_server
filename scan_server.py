@@ -88,13 +88,12 @@ class DoScanHandler(tornado.web.RequestHandler):
     self._scanner = scan_controller
 
   def _redirect_here(self, msg):
-    self.set_header("Refresh", "2; url=" + self.application.reverse_url('do_scan'))
+    self.set_header("Refresh", "2; url=" + self.reverse_url('do_scan'))
     self.write('<html><body>')
     self.write('<p>%s</p>' % msg)
     self.write('</body></html>')
 
   def get(self):
-    print 'In get now.'
     if not self._scanner.scan_in_progress():
       self.send_error(404)
       return
@@ -102,8 +101,10 @@ class DoScanHandler(tornado.web.RequestHandler):
       if not self._scanner.last_scan_successful():
         self.send_error(500)
         return
-      self.set_header("Content-Type", "text/plain")
-      self.write('Image scanned successfully: %s' % (self._scanner.get_last_scan_name()))
+      red_url = self.reverse_url('present_scan', self._scanner.get_last_scan_name())
+      self.redirect(red_url, permanent=False)
+      #self.set_header("Content-Type", "text/plain")
+      #self.write('Image scanned successfully: %s' % (self._scanner.get_last_scan_name()))
     else:
       # Not done yet - redirect here again.
       self._redirect_here('Still scanning...')
@@ -137,10 +138,19 @@ class DoScanHandler(tornado.web.RequestHandler):
       self.write('<p>Unknown error.</p>')
     self.write('</body></html>')
 
+class PresentScanHandler(tornado.web.RequestHandler):
+  def get(self, *args, **kwargs):
+    self.write('<html><body>')
+    self.write('<p><a href="%s">Back to main page.</a></p>' %
+        self.reverse_url('main'))
+    self.write('<p>Args: %s.</p>' % str(args))
+    self.write('</body></html>')
+
 def get_application(options):
   controller = ScannerController(options.scan_binary, options.scans_root)
   application = tornado.web.Application([(r"/", MainHandler),
     URLSpec(r"/show_scans", ScanListHandler, dict(scans_root=options.scans_root), name="main"),
+    URLSpec(r"/present_scan/(.*).jpg", PresentScanHandler, name="present_scan"),
     URLSpec(r"/do_scan", DoScanHandler, dict(scan_controller=controller), name="do_scan"),
     ], static_path=options.scans_root)
   return application
