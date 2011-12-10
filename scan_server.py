@@ -10,8 +10,8 @@ from optparse import OptionParser
 parser = OptionParser()
 parser.add_option("-s", "--scans_root", dest="scans_root",
     help = "Root directory containing the scans.")
-parser.add_option("-b", "--scanimage", dest="scanimage_binary",
-    help = "Path to the scanimage binary.", default="/usr/bin/scanimage")
+parser.add_option("-b", "--scanbinary", dest="scan_binary",
+    help = "Path to the scanning binary.", default="do_scan.sh")
 
 def get_jpegs_list(in_dir):
   return [t for t in os.listdir(in_dir) if t.endswith('.jpg')]
@@ -45,6 +45,7 @@ class ScanListHandler(tornado.web.RequestHandler):
 class DoScanHandler(tornado.web.RequestHandler):
   def initialize(self):
     self._alphanumeric_re = re.compile('[\w]+\Z')
+    self._scan_subprocess = None
 
   def get(self):
     self.write('Your image goes here.')
@@ -52,16 +53,23 @@ class DoScanHandler(tornado.web.RequestHandler):
   def post(self):
     scan_name = self.get_argument('scan_name')
     if not self._alphanumeric_re.match(scan_name):
-      self.send_error()
+      self.send_error(400)
+      return
+    if self._scan_subprocess:
+      self.send_error(503)
       return
 
-    self.set_header("Content-Type", "text/plain")
-    self.write("Will scan to " + scan_name)
+    #self.set_header("Content-Type", "text/plain")
+    #self.write("Will scan to " + scan_name)a
+    self._scan_subprocess = None
 
   def write_error(self, status_code, **kwargs):
     self.write('<html><body>')
-    self.write('<p>Not an alphanumeric name.</p>')
-    self.write('<a href="/show_scans">Go back.</a>')
+    if status_code == 400:
+      self.write('<p>Not an alphanumeric name.</p>')
+      self.write('<a href="/show_scans">Go back.</a>')
+    else:
+      self.write('<p>Scanning in progress.</p>')
     self.write('</body></html>')
 
 def get_application(scans_root):
