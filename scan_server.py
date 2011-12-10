@@ -143,7 +143,11 @@ class PresentScanHandler(tornado.web.RequestHandler):
     self.write('<html><body>')
     self.write('<p><a href="%s">Back to main page.</a></p>' %
         self.reverse_url('main'))
-    self.write('<p>Args: %s.</p>' % str(args))
+    #self.write('<p>Args: %s.</p>' % str(args))
+    scan_name = args[0] + '.jpg'
+    scan_img_url = self.static_url(scan_name)
+    self.write('<a href="%(img)s"><img src="%(img)s" height="1024" width="768"/></a>' %
+        {'img': scan_img_url})
     self.write('</body></html>')
 
 def get_application(options):
