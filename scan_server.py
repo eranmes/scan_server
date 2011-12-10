@@ -28,7 +28,8 @@ class ScanListHandler(tornado.web.RequestHandler):
       img_url = self.static_url(scan_image)
       scans_list += '<li><a href=%s>%s</a></li>' % (img_url, scan_image)
     scans_list += '</ul>'
-    self.write('<html><body>'
+    self.write('<html><head><title>Scanner Web Interface.</title></head>')
+    self.write('<body>'
         '<div>Existing scans: '
         '<p>' + scans_list + '</p></div>'
         '<div>Name for the next scan:</div>'
@@ -36,7 +37,8 @@ class ScanListHandler(tornado.web.RequestHandler):
         '<input type="text" name="scan_name">'
         '<input type="submit" value="Submit">'
         '</form>'
-        '</body></html>')
+        '</body>')
+    self.write('</html>')
 
 class DoScanHandler(tornado.web.RequestHandler):
   def __init__(self):
