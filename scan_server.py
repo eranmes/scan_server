@@ -33,13 +33,13 @@ class ScannerController(object):
 
   def is_scan_done(self):
     p = self._scan_subprocess
-    res = p.poll()
-    if res:
+    in_progress = p.poll() is None
+    if not in_progress:
       self._last_rc = p.returncode
       self._last_output = p.stdout.read()
       self._scan_subprocess = None
 
-    return res
+    return not in_progress
 
   def last_scan_successful(self):
     return self._last_rc == 0
@@ -49,7 +49,8 @@ class ScannerController(object):
 
   def start_scan(self, scan_name):
     self._scan_name = scan_name
-    self._scan_subprocess = Popen([self._scanner_binary, self._scan_name], 
+    self._scan_subprocess = Popen(
+        [self._scanner_binary, self._scan_name, self._root], 
         stdout=PIPE, stderr=STDOUT)
 
   def get_last_scan_name(self):
