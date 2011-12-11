@@ -16,9 +16,9 @@ parser.add_option("-s", "--scans_root", dest="scans_root",
 parser.add_option("-b", "--scanbinary", dest="scan_binary",
     help = "Path to the scanning binary.", default="do_scan.sh")
 
-def get_jpegs_list(in_dir):
-  return [t for t in os.listdir(in_dir) if t.endswith('.jpg')]
-
+#####################################
+###     Controller classes        ###
+#####################################
 class ScannerController(object):
   def __init__(self, scan_binary, scans_root):
     self._scanner_binary = scan_binary
@@ -56,19 +56,36 @@ class ScannerController(object):
   def get_last_scan_name(self):
     return self._scan_name
 
+class ScansManager(object):
+  def __init__(self, root_dir):
+    self._root = root_dir
+
+  def get_jpegs_list(self):
+    all_files = os.listdir(self._root) 
+    return [t for t in all_files if t.endswith('.jpg')]
+
+  def delete_scan(self, scan_name):
+    fullname = os.path.join(self._root, scan_name)
+    if os.path.exists(fullname):
+      os.remove(fullname)
+
+
+#####################################
+###     Presenter classes         ###
+#####################################
 class MainHandler(tornado.web.RequestHandler):
   def get(self):
     self.redirect('/show_scans', permanent=True)
 
 class ScanListHandler(tornado.web.RequestHandler):
-  def initialize(self, scans_root):
-    self._root = scans_root
+  def initialize(self, scans_manager):
+    self._manager = scans_manager
 
   def get(self):
     scans_list = '<ul>'
-    for scan_image in get_jpegs_list(self._root):
-      img_url = self.static_url(scan_image)
-      scans_list += '<li><a href=%s>%s</a></li>' % (img_url, scan_image)
+    for scan_image in self._manager.get_jpegs_list():
+      show_url = self.reverse_url('single_scan', scan_image.split('.')[0])
+      scans_list += '<li><a href=%s>%s</a></li>' % (show_url, scan_image)
     scans_list += '</ul>'
     self.write('<html><head><title>Scanner Web Interface.</title></head>')
     self.write('<body>'
@@ -101,7 +118,7 @@ class DoScanHandler(tornado.web.RequestHandler):
       if not self._scanner.last_scan_successful():
         self.send_error(500)
         return
-      red_url = self.reverse_url('present_scan', self._scanner.get_last_scan_name())
+      red_url = self.reverse_url('single_scan', self._scanner.get_last_scan_name())
       self.redirect(red_url, permanent=False)
       #self.set_header("Content-Type", "text/plain")
       #self.write('Image scanned successfully: %s' % (self._scanner.get_last_scan_name()))
@@ -138,23 +155,38 @@ class DoScanHandler(tornado.web.RequestHandler):
       self.write('<p>Unknown error.</p>')
     self.write('</body></html>')
 
-class PresentScanHandler(tornado.web.RequestHandler):
+class SingleScanHandler(tornado.web.RequestHandler):
+  def initialize(self, scans_manager):
+    self._manager = scans_manager
+
   def get(self, *args, **kwargs):
+    scan_name = args[0] + '.jpg'
+    del_url = self.reverse_url('single_scan', args[0])
     self.write('<html><body>')
     self.write('<p><a href="%s">Back to main page.</a></p>' %
         self.reverse_url('main'))
-    #self.write('<p>Args: %s.</p>' % str(args))
-    scan_name = args[0] + '.jpg'
+    self.write(
+        '<form action="%s" method="post">'
+        '<input type="hidden" name="do_delete" value="true"/>' 
+        '<input type="submit" value="Delete Scan"/>'
+        '</form>' % (del_url))
     scan_img_url = self.static_url(scan_name)
     self.write('<a href="%(img)s"><img src="%(img)s" height="1024" width="768"/></a>' %
         {'img': scan_img_url})
     self.write('</body></html>')
 
+  def post(self, *args):
+    scan_name = args[0] + '.jpg'
+    do_delete = self.get_argument('do_delete')
+    if do_delete:
+      print 'Will delete %s' % (scan_name)
+
 def get_application(options):
   controller = ScannerController(options.scan_binary, options.scans_root)
+  manager = ScansManager(options.scans_root)
   application = tornado.web.Application([(r"/", MainHandler),
-    URLSpec(r"/show_scans", ScanListHandler, dict(scans_root=options.scans_root), name="main"),
-    URLSpec(r"/present_scan/(.*).jpg", PresentScanHandler, name="present_scan"),
+    URLSpec(r"/show_scans", ScanListHandler, dict(scans_manager=manager), name="main"),
+    URLSpec(r"/single_scan/(.*).jpg", SingleScanHandler, dict(scans_manager=manager), name="single_scan"),
     URLSpec(r"/do_scan", DoScanHandler, dict(scan_controller=controller), name="do_scan"),
     ], static_path=options.scans_root)
   return application
