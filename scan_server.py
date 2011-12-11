@@ -163,6 +163,10 @@ class SingleScanHandler(tornado.web.RequestHandler):
     scan_name = args[0] + '.jpg'
     del_url = self.reverse_url('single_scan', args[0])
     self.write('<html><body>')
+    self.write(
+        '<form action="%s" method="get">'
+        '<button type="button" value="Back to scans list"/>'
+        '</form>' % (self.reverse_url('main')))
     self.write('<p><a href="%s">Back to main page.</a></p>' %
         self.reverse_url('main'))
     self.write(
