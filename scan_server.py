@@ -57,6 +57,8 @@ class ScannerController(object):
     return self._scan_name
 
 class ScansManager(object):
+  """Always returns (and exects) file name, including the jpeg suffix.
+  """
   def __init__(self, root_dir):
     self._root = root_dir
 
@@ -69,13 +71,17 @@ class ScansManager(object):
     if os.path.exists(fullname):
       os.remove(fullname)
 
+  def does_image_exist(self, scan_name):
+    fullname = os.path.join(self._root, scan_name)
+    return os.path.exists(fullname)
+
 
 #####################################
 ###     Presenter classes         ###
 #####################################
 class MainHandler(tornado.web.RequestHandler):
   def get(self):
-    self.redirect('/show_scans', permanent=True)
+    self.redirect(self.reverse_url('main'), permanent=True)
 
 class ScanListHandler(tornado.web.RequestHandler):
   def initialize(self, scans_manager):
@@ -161,14 +167,19 @@ class SingleScanHandler(tornado.web.RequestHandler):
 
   def get(self, *args, **kwargs):
     scan_name = args[0] + '.jpg'
-    del_url = self.reverse_url('single_scan', args[0])
+    if not self._manager.does_image_exist(scan_name):
+      self.send_error(404)
+      return
+
     self.write('<html><body>')
+    #self.write('<p><a href="%s">Back to main page.</a></p>' %
+    #    self.reverse_url('main'))
     self.write(
         '<form action="%s" method="get">'
-        '<button type="button" value="Back to scans list"/>'
+        '<input type="submit" value="Back to scans list"/>'
         '</form>' % (self.reverse_url('main')))
-    self.write('<p><a href="%s">Back to main page.</a></p>' %
-        self.reverse_url('main'))
+
+    del_url = self.reverse_url('single_scan', args[0])
     self.write(
         '<form action="%s" method="post">'
         '<input type="hidden" name="do_delete" value="true"/>' 
@@ -181,9 +192,13 @@ class SingleScanHandler(tornado.web.RequestHandler):
 
   def post(self, *args):
     scan_name = args[0] + '.jpg'
+    if not self._manager.does_image_exist(scan_name):
+      self.send_error(404)
+      return
     do_delete = self.get_argument('do_delete')
     if do_delete:
-      print 'Will delete %s' % (scan_name)
+      self._manager.delete_scan(scan_name)
+      self.redirect(self.reverse_url('main'), permanent=False)
 
 def get_application(options):
   controller = ScannerController(options.scan_binary, options.scans_root)
