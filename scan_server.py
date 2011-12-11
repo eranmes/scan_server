@@ -121,13 +121,13 @@ class DoScanHandler(tornado.web.RequestHandler):
       self.send_error(404)
       return
     if self._scanner.is_scan_done():
+      # Scan done - check  if it was successful.
       if not self._scanner.last_scan_successful():
         self.send_error(500)
         return
+      # Done OK: redirect to scan preview.
       red_url = self.reverse_url('single_scan', self._scanner.get_last_scan_name())
       self.redirect(red_url, permanent=False)
-      #self.set_header("Content-Type", "text/plain")
-      #self.write('Image scanned successfully: %s' % (self._scanner.get_last_scan_name()))
     else:
       # Not done yet - redirect here again.
       self._redirect_here('Still scanning...')
