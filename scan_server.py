@@ -1,5 +1,7 @@
 import datetime
 import os
+import threading
+import time
 import tornado.httpclient
 import tornado.ioloop
 import tornado.web
@@ -24,37 +26,82 @@ class ScannerController(object):
     self._scanner_binary = scan_binary
     self._root = scans_root
     self._scan_subprocess = None
-    self._scan_name = ""
-    self._last_rc = 0
-    self._last_output = ''
 
-  def scan_in_progress(self):
-    return self._scan_subprocess != None
+  def start_scan(self, scan_name):
+    self._scan_subprocess = Popen(
+        [self._scanner_binary, scan_name, self._root], 
+        stdout=PIPE, stderr=STDOUT)
 
   def is_scan_done(self):
     p = self._scan_subprocess
     in_progress = p.poll() is None
-    if not in_progress:
-      self._last_rc = p.returncode
-      self._last_output = p.stdout.read()
-      self._scan_subprocess = None
-
     return not in_progress
+
+  def collect_scan_results(self):
+    p = self._scan_subprocess
+    in_progress = p.poll() is None
+    if in_progress:
+      raise RuntimeError('Scan still in progress')
+    scan_rc = p.returncode
+    scan_output = p.stdout.read()
+    self._scan_subprocess = None
+    return (scan_rc, scan_output)
+
+class ScanProgressSupervisor(threading.Thread):
+  def __init__(self, scan_controller, results_collector):
+    threading.Thread.__init__(self)
+    self._scan_controller = scan_controller
+    self._collector = results_collector
+
+  def run(self):
+    while not self._scan_controller.is_scan_done():
+      time.sleep(1)
+    self._collector.report_scan_results(
+        *self._scan_controller.collect_scan_results())
+
+class ScanProcessManager(object):
+  def __init__(self, scanner_controller):
+    self._controller = scanner_controller
+    self._monitor = None
+    self._last_rc = 0
+    self._last_output = ''
+    self._scan_name = ""
+    self._has_uncollected_results = False
+  
+  def start_scan(self, scan_name):
+    if not self._monitor is None:
+      raise RuntimeError('There is a scan in progress.')
+    self._scan_name = scan_name
+    self._controller.start_scan(scan_name)
+    self._monitor = ScanProgressSupervisor(self._controller, self)
+    self._monitor.start()
+
+  def scan_in_progress(self):
+    return self._monitor != None
 
   def last_scan_successful(self):
     return self._last_rc == 0
 
   def get_last_scan_results(self):
+    self._has_uncollected_results = False
     return (self._last_rc, self._last_output)
 
-  def start_scan(self, scan_name):
-    self._scan_name = scan_name
-    self._scan_subprocess = Popen(
-        [self._scanner_binary, self._scan_name, self._root], 
-        stdout=PIPE, stderr=STDOUT)
+  def report_scan_results(self, last_rc, last_output):
+    self._last_rc = last_rc
+    self._last_output = last_output
+    self._monitor = None
+    self._has_uncollected_results = True
 
   def get_last_scan_name(self):
     return self._scan_name
+
+  @property
+  def scan_done(self):
+    return self._monitor is None
+
+  @property
+  def uncollected_results(self):
+    return self._has_uncollected_results
 
 class ScansManager(object):
   """Always returns (and exects) file name, including the jpeg suffix.
@@ -117,10 +164,11 @@ class DoScanHandler(tornado.web.RequestHandler):
     self.write('</body></html>')
 
   def get(self):
-    if not self._scanner.scan_in_progress():
+    if not (self._scanner.scan_in_progress() or 
+        self._scanner.uncollected_results):
       self.send_error(404)
       return
-    if self._scanner.is_scan_done():
+    if self._scanner.scan_done:
       # Scan done - check  if it was successful.
       if not self._scanner.last_scan_successful():
         self.send_error(500)
@@ -201,12 +249,13 @@ class SingleScanHandler(tornado.web.RequestHandler):
       self.redirect(self.reverse_url('main'), permanent=False)
 
 def get_application(options):
-  controller = ScannerController(options.scan_binary, options.scans_root)
   manager = ScansManager(options.scans_root)
+  controller = ScannerController(options.scan_binary, options.scans_root)
+  process_manager = ScanProcessManager(controller)
   application = tornado.web.Application([(r"/", MainHandler),
     URLSpec(r"/show_scans", ScanListHandler, dict(scans_manager=manager), name="main"),
     URLSpec(r"/single_scan/(.*).jpg", SingleScanHandler, dict(scans_manager=manager), name="single_scan"),
-    URLSpec(r"/do_scan", DoScanHandler, dict(scan_controller=controller), name="do_scan"),
+    URLSpec(r"/do_scan", DoScanHandler, dict(scan_controller=process_manager), name="do_scan"),
     ], static_path=options.scans_root)
   return application
 
