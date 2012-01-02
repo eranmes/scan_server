@@ -144,7 +144,7 @@ class ScanListHandler(tornado.web.RequestHandler):
     self.write('<body>'
         '<div>Existing scans: '
         '<p>' + scans_list + '</p></div>'
-        '<div>Name for the next scan:</div>'
+        '<div>Name for the next scan (spaces will be converted to underscore):</div>'
         '<form action="/do_scan" method="post">'
         '<input type="text" name="scan_name">'
         '<input type="submit" value="Submit">'
@@ -182,6 +182,7 @@ class DoScanHandler(tornado.web.RequestHandler):
 
   def post(self):
     scan_name = self.get_argument('scan_name')
+    scan_name = scan_name.replace(' ', '_')
     if not self._alphanumeric_re.match(scan_name):
       self.send_error(400)
       return
