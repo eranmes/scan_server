@@ -142,13 +142,13 @@ class ScanListHandler(tornado.web.RequestHandler):
     scans_list += '</ul>'
     self.write('<html><head><title>Scanner Web Interface.</title></head>')
     self.write('<body>'
-        '<div>Existing scans: '
-        '<p>' + scans_list + '</p></div>'
         '<div>Name for the next scan (spaces will be converted to underscore):</div>'
         '<form action="/do_scan" method="post">'
-        '<input type="text" name="scan_name">'
-        '<input type="submit" value="Submit">'
+        '<input type="text" name="scan_name"/>'
+        '<input type="submit" value="Submit"/>'
         '</form>'
+        '<div>Existing scans: '
+        '<p>' + scans_list + '</p></div>'
         '</body>')
     self.write('</html>')
 
