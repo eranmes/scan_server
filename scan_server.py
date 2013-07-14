@@ -118,9 +118,17 @@ class ScansManager(object):
     if os.path.exists(fullname):
       os.remove(fullname)
 
+  def _full_path(self, base_name):
+    return os.path.join(self._root, base_name)
+
   def does_image_exist(self, scan_name):
-    fullname = os.path.join(self._root, scan_name)
-    return os.path.exists(fullname)
+    return os.path.exists(self._full_path(scan_name))
+
+  def rename_image(self, old_name, new_name):
+    if not self.does_image_exist(old_name):
+      return False
+    os.rename(self._full_path(old_name), self._full_path(new_name))
+    return True
 
 
 #####################################
@@ -152,9 +160,15 @@ class ScanListHandler(tornado.web.RequestHandler):
         '</body>')
     self.write('</html>')
 
+def normalize_and_check_name(in_name):
+  scan_name = in_name.replace(' ', '_')
+  alphanumeric_re = re.compile('[\w]+\Z')
+  if not alphanumeric_re.match(scan_name):
+    return None
+  return scan_name
+
 class DoScanHandler(tornado.web.RequestHandler):
   def initialize(self, scan_controller):
-    self._alphanumeric_re = re.compile('[\w]+\Z')
     self._scanner = scan_controller
 
   def _redirect_here(self, msg):
@@ -181,9 +195,9 @@ class DoScanHandler(tornado.web.RequestHandler):
       self._redirect_here('Still scanning...')
 
   def post(self):
-    scan_name = self.get_argument('scan_name')
-    scan_name = scan_name.replace(' ', '_')
-    if not self._alphanumeric_re.match(scan_name):
+    in_name = self.get_argument('scan_name')
+    scan_name = normalize_and_check_name(in_name)
+    if scan_name is None:
       self.send_error(400)
       return
     if self._scanner.scan_in_progress():
@@ -228,6 +242,15 @@ class SingleScanHandler(tornado.web.RequestHandler):
         '<input type="submit" value="Back to scans list"/>'
         '</form>' % (self.reverse_url('main')))
 
+    rename_url = self.reverse_url('rename_scan')
+    self.write(
+        '<div>New name for scan: </div>'
+        '<form action="%s" method="post">'
+        '<input type="hidden" name="old_name" value="%s"/>'
+        '<input type="text" name="new_name"/>'
+        '<input type="submit" value="Submit"/>'
+        '</form>' % (rename_url, scan_name))
+
     del_url = self.reverse_url('single_scan', args[0])
     self.write(
         '<form action="%s" method="post">'
@@ -249,6 +272,29 @@ class SingleScanHandler(tornado.web.RequestHandler):
       self._manager.delete_scan(scan_name)
       self.redirect(self.reverse_url('main'), permanent=False)
 
+class RenameScanHandler(tornado.web.RequestHandler):
+  def initialize(self, scans_manager):
+    self._manager = scans_manager
+
+  def get(self, *args, **kwargs):
+    self.set_header("Refresh", "2; url=" + self.reverse_url('show_scans'))
+    self.write('<html><body>')
+    self.write('<p>%s</p>' % msg)
+    self.write('</body></html>')
+
+  def post(self, *args):
+    old_name = self.get_argument('old_name')
+    new_name_in = self.get_argument('new_name')
+    new_name = normalize_and_check_name(new_name_in)
+    if new_name is None:
+      self.send_error(400)
+      return
+    rename_res = self._manager.rename_image(old_name, new_name + '.jpg')
+    if not rename_res:
+      self.send_error(404)
+      return
+    self.redirect(self.reverse_url('main'), permanent=False)
+
 def get_application(options):
   manager = ScansManager(options.scans_root)
   controller = ScannerController(options.scan_binary, options.scans_root)
@@ -257,6 +303,7 @@ def get_application(options):
     URLSpec(r"/show_scans", ScanListHandler, dict(scans_manager=manager), name="main"),
     URLSpec(r"/single_scan/(.*).jpg", SingleScanHandler, dict(scans_manager=manager), name="single_scan"),
     URLSpec(r"/do_scan", DoScanHandler, dict(scan_controller=process_manager), name="do_scan"),
+    URLSpec(r"/rename_scan", RenameScanHandler, dict(scans_manager=manager), name="rename_scan"),
     ], static_path=options.scans_root)
   return application
 
