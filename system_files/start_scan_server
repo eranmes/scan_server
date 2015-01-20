@@ -1,0 +1,2 @@
+#!/bin/bash
+python /usr/local/bin/scan_server.py -s /data/scans -b /usr/local/bin/do_scan.sh &
